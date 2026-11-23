@@ -9,12 +9,7 @@ const H = 600;
 const keys = {};
 const justPressed = {};
 
-window.addEventListener('keydown', e => {
-  justPressed[e.code] = !keys[e.code];
-  keys[e.code] = true;
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code))
-    e.preventDefault();
-});
+
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
 function pressed(code) {
@@ -58,12 +53,17 @@ class Bullet {
 }
 
 // ── Asteroid ──────────────────────────────────────────────────────────────────
-const RADII  = [0, 16, 30, 50];   // por tamaño 1, 2, 3
+const MAX_SIZE = 3;
+const RADII  = [0, 16, 30, 50];   // por tamaño 1..3
 const SPEEDS = [0, 85, 55, 32];   // velocidad base por tamaño
 const POINTS = [0, 100, 50, 20];  // puntos por tamaño
 
+// Todos los asteroides usan el mismo sprite
+const asteroidImg = new Image();
+asteroidImg.src = 'asteroide.png';
+
 class Asteroid {
-  constructor(x, y, size = 3) {
+  constructor(x, y, size = MAX_SIZE) {
     this.x    = x;
     this.y    = y;
     this.size = size;
@@ -71,20 +71,11 @@ class Asteroid {
     this.dead = false;
 
     const angle = rand(0, Math.PI * 2);
-    const speed = SPEEDS[size] + rand(-15, 15);
+    const speed = SPEEDS[size] + rand(-10, 10);
     this.vx = Math.cos(angle) * speed;
     this.vy = Math.sin(angle) * speed;
     this.rotSpeed = rand(-1.2, 1.2);
     this.rot = rand(0, Math.PI * 2);
-
-    // Polígono irregular
-    const n = randInt(8, 13);
-    this.verts = [];
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      const r = this.radius * rand(0.6, 1.0);
-      this.verts.push([Math.cos(a) * r, Math.sin(a) * r]);
-    }
   }
 
   update(dt) {
@@ -102,18 +93,17 @@ class Asteroid {
   }
 
   draw() {
+    if (!asteroidImg.complete || !asteroidImg.naturalWidth) return;
+    const r = this.radius;
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rot);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth   = 1.5;
-    ctx.lineJoin    = 'round';
+    // Invertido para dibujo blanco sobre fondo negro; recortado a un círculo
     ctx.beginPath();
-    ctx.moveTo(this.verts[0][0], this.verts[0][1]);
-    for (let i = 1; i < this.verts.length; i++)
-      ctx.lineTo(this.verts[i][0], this.verts[i][1]);
-    ctx.closePath();
-    ctx.stroke();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.filter = 'grayscale(1) invert(1)';
+    ctx.drawImage(asteroidImg, -r * 1.08, -r * 1.08, r * 2.16, r * 2.16);
     ctx.restore();
   }
 }
@@ -249,7 +239,7 @@ function spawnAsteroids(count) {
       x = rand(0, W);
       y = rand(0, H);
     } while (Math.hypot(x - W / 2, y - H / 2) < SAFE_DIST);
-    asteroids.push(new Asteroid(x, y, 3));
+    asteroids.push(new Asteroid(x, y));
   }
 }
 
