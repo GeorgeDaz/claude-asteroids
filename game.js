@@ -67,11 +67,20 @@ const POINTS = [0, 100, 50, 20];  // puntos por tamaño
 const asteroidImg = new Image();
 asteroidImg.src = 'asteroide.png';
 
+// Tonos de roca: [claro, oscuro] para el degradado de iluminación
+const ROCK_COLORS = [
+  ['#b59a7a', '#4a3a2c'],   // marrón grisáceo
+  ['#c0735a', '#4d2218'],   // hierro oxidado
+  ['#c9b06a', '#5a4a1e'],   // ocre
+  ['#8f9aa8', '#2f3844'],   // pizarra
+];
+
 class Asteroid {
-  constructor(x, y, size = MAX_SIZE) {
+  constructor(x, y, size = MAX_SIZE, color = ROCK_COLORS[randInt(0, ROCK_COLORS.length - 1)]) {
     this.x    = x;
     this.y    = y;
     this.size = size;
+    this.color = color;
     this.radius = RADII[size];
     this.dead = false;
 
@@ -92,8 +101,8 @@ class Asteroid {
   split() {
     if (this.size <= 1) return [];
     return [
-      new Asteroid(this.x, this.y, this.size - 1),
-      new Asteroid(this.x, this.y, this.size - 1),
+      new Asteroid(this.x, this.y, this.size - 1, this.color),
+      new Asteroid(this.x, this.y, this.size - 1, this.color),
     ];
   }
 
@@ -103,12 +112,31 @@ class Asteroid {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rot);
-    // Invertido para dibujo blanco sobre fondo negro; recortado a un círculo
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.clip();
-    ctx.filter = 'grayscale(1) invert(1)';
+    // Base de roca con luz arriba-izquierda (la luz no rota con el asteroide)
+    const [light, dark] = this.color;
+    const lx = -r * 0.4, ly = -r * 0.4;
+    const c = Math.cos(-this.rot), s = Math.sin(-this.rot);
+    const g = ctx.createRadialGradient(lx * c - ly * s, lx * s + ly * c, r * 0.1, 0, 0, r * 1.1);
+    g.addColorStop(0, light);
+    g.addColorStop(1, dark);
+    ctx.fillStyle = g;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+    // El sprite (tinta negra sobre blanco) se multiplica: cráteres y contornos quedan oscuros
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.filter = 'grayscale(1)';
     ctx.drawImage(asteroidImg, -r * 1.08, -r * 1.08, r * 2.16, r * 2.16);
+    ctx.restore();
+    // Contorno oscuro para separarlo del fondo
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.strokeStyle = '#1a1208';
+    ctx.lineWidth = 2;
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -124,7 +152,64 @@ const SLOW_FACTOR     = 0.5;   // multiplicador de velocidad de asteroides
 const HYPER_DURATION  = 8;     // segundos de hipervelocidad
 const HYPER_MULT      = 2;     // multiplicador del empuje de la nave
 const POWERUP_CHANCE  = 0.1;   // probabilidad por impacto a un asteroide
-const POWERUP_TTL     = 8;     // segundos que el símbolo permanece en pantalla
+const POWERUP_TTL     = 11;    // segundos que el símbolo permanece en pantalla
+
+// Casco de la nave estilo cómic futurista, en coordenadas locales (nariz en +x).
+// Lo usan Ship.draw y los iconos de vidas del HUD.
+function drawShipHull() {
+  ctx.lineJoin    = 'round';
+  ctx.lineWidth   = 1.5;
+  ctx.strokeStyle = '#0a0a18';
+
+  // Alas delta con franja roja
+  ctx.fillStyle = '#e03a3a';
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(8,   side * 3);
+    ctx.lineTo(-11, side * 11);
+    ctx.lineTo(-7,  side * 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Propulsores traseros
+  ctx.fillStyle = '#3c4658';
+  for (const side of [-1, 1]) {
+    ctx.fillRect(-12, side * 3.5 - 1.8, 5, 3.6);
+    ctx.strokeRect(-12, side * 3.5 - 1.8, 5, 3.6);
+  }
+
+  // Fuselaje metálico
+  const body = ctx.createLinearGradient(0, -5, 0, 5);
+  body.addColorStop(0, '#f2f6fb');
+  body.addColorStop(1, '#7388a6');
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(21,  0);
+  ctx.lineTo(7,  -4.5);
+  ctx.lineTo(-8, -4);
+  ctx.lineTo(-9,  0);
+  ctx.lineTo(-8,  4);
+  ctx.lineTo(7,   4.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Cabina de cristal cian con brillo
+  const glass = ctx.createLinearGradient(0, -2.6, 0, 2.6);
+  glass.addColorStop(0, '#9ff4ff');
+  glass.addColorStop(1, '#0a8fd0');
+  ctx.fillStyle = glass;
+  ctx.beginPath();
+  ctx.ellipse(5, 0, 6, 2.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath();
+  ctx.ellipse(6.5, -1, 2.2, 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
 
 class Ship {
   constructor() { this.reset(); }
@@ -194,34 +279,28 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth   = 1.5;
-    ctx.lineJoin    = 'round';
 
-    // Silueta clásica: triángulo con muesca trasera
-    ctx.beginPath();
-    ctx.moveTo( 20,  0);   // nariz
-    ctx.lineTo(-12, -9);   // ala izquierda
-    ctx.lineTo( -7,  0);   // muesca trasera
-    ctx.lineTo(-12,  9);   // ala derecha
-    ctx.closePath();
-    ctx.stroke();
-
-    // Llama del propulsor
+    // Llamas gemelas de los propulsores (detrás del casco)
     if (this.thrusting && Math.random() > 0.35) {
-      ctx.beginPath();
-      ctx.moveTo(-8, -4);
-      ctx.lineTo(-8 - rand(6, 14), 0);
-      ctx.lineTo(-8,  4);
-      ctx.strokeStyle = this.hyper > 0 ? 'rgba(80, 160, 255, 0.9)' : 'rgba(255, 130, 0, 0.85)';
-      ctx.stroke();
+      ctx.fillStyle = this.hyper > 0 ? 'rgba(80, 160, 255, 0.9)' : 'rgba(255, 140, 0, 0.9)';
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-11, side * 3.5 - 1.8);
+        ctx.lineTo(-11 - rand(6, 13), side * 3.5);
+        ctx.lineTo(-11, side * 3.5 + 1.8);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
+
+    drawShipHull();
 
     // Escudo: anillo alrededor de la nave
     if (this.shield > 0) {
       ctx.beginPath();
       ctx.arc(0, 0, this.radius + 8, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(0, 220, 255, 0.8)';
+      ctx.lineWidth   = 1.5;
       ctx.stroke();
     }
 
@@ -246,7 +325,7 @@ class PowerUp {
     const angle = rand(0, Math.PI * 2);
     this.vx = Math.cos(angle) * 20;
     this.vy = Math.sin(angle) * 20;
-    this.radius = 11;
+    this.radius = 16.5;
     this.ttl  = POWERUP_TTL;
     this.dead = false;
   }
@@ -264,11 +343,11 @@ class PowerUp {
     const { letter, color } = POWERUP_TYPES[this.type];
     ctx.strokeStyle = color;
     ctx.fillStyle   = color;
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = 3;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.font = 'bold 14px monospace';
+    ctx.font = 'bold 21px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(letter, this.x, this.y + 1);
@@ -308,7 +387,117 @@ class Particle {
   }
 }
 
+// ── Fondo (espacio profundo) ──────────────────────────────────────────────────
+// Se renderiza una sola vez por nivel en un canvas aparte; draw() solo lo copia.
+// Solo degradados suaves, tonos fríos y poco brillo para no confundirse con asteroides.
+function softBlob(g, x, y, r, rgb, alpha) {
+  const grad = g.createRadialGradient(x, y, 0, x, y, r);
+  grad.addColorStop(0, `rgba(${rgb},${alpha})`);
+  grad.addColorStop(1, `rgba(${rgb},0)`);
+  g.fillStyle = grad;
+  g.fillRect(x - r, y - r, r * 2, r * 2);
+}
+
+const BACKDROPS = [
+  // Vía Láctea: banda diagonal difusa con estrellas densas
+  g => {
+    const x0 = -40, y0 = H * 0.9, x1 = W + 40, y1 = H * 0.1;
+    const nx = -(y1 - y0), ny = x1 - x0, nl = Math.hypot(nx, ny);
+    for (let i = 0; i < 70; i++) {
+      const t = Math.random(), off = rand(-45, 45);
+      softBlob(g, x0 + (x1 - x0) * t + nx / nl * off, y0 + (y1 - y0) * t + ny / nl * off,
+               rand(40, 90), Math.random() < 0.5 ? '140,150,230' : '170,130,220', 0.07);
+    }
+    g.fillStyle = 'rgba(210,220,255,0.35)';
+    for (let i = 0; i < 380; i++) {
+      const t = Math.random(), off = rand(-70, 70);
+      g.fillRect(x0 + (x1 - x0) * t + nx / nl * off, y0 + (y1 - y0) * t + ny / nl * off, 1, 1);
+    }
+  },
+  // Púlsar: núcleo brillante, halo y dos haces tenues opuestos
+  g => {
+    const x = rand(180, 620), y = rand(140, 460), a = rand(0, Math.PI);
+    softBlob(g, x, y, 90, '110,170,255', 0.35);
+    g.save();
+    g.translate(x, y);
+    g.rotate(a);
+    for (const dir of [-1, 1]) {
+      const beam = g.createLinearGradient(0, 0, dir * 320, 0);
+      beam.addColorStop(0, 'rgba(150,200,255,0.30)');
+      beam.addColorStop(1, 'rgba(150,200,255,0)');
+      g.fillStyle = beam;
+      g.beginPath();
+      g.moveTo(0, -2);
+      g.lineTo(dir * 320, -9);
+      g.lineTo(dir * 320, 9);
+      g.lineTo(0, 2);
+      g.closePath();
+      g.fill();
+    }
+    g.restore();
+    softBlob(g, x, y, 14, '230,240,255', 0.9);
+  },
+  // Galaxia espiral inclinada + galaxia elíptica lejana
+  g => {
+    const x = rand(220, 580), y = rand(180, 420);
+    g.save();
+    g.translate(x, y);
+    g.rotate(rand(-0.6, 0.6));
+    g.scale(1, 0.45);
+    softBlob(g, 0, 0, 70, '170,170,255', 0.28);
+    for (let arm = 0; arm < 2; arm++) {
+      for (let i = 0; i < 700; i++) {
+        const th = i * 0.012 + arm * Math.PI;
+        const r = 8 + th * 16 + rand(-12, 12);
+        softBlob(g, Math.cos(th) * r, Math.sin(th) * r, rand(5, 12), '160,180,255', 0.09);
+      }
+    }
+    g.restore();
+    g.save();
+    g.translate(rand(60, 740), rand(50, 550));
+    g.rotate(rand(0, Math.PI));
+    g.scale(1, 0.5);
+    softBlob(g, 0, 0, 26, '200,190,255', 0.22);
+    g.restore();
+  },
+  // Nebulosa: grandes nubes superpuestas magenta / turquesa
+  g => {
+    const tones = ['190,60,170', '40,170,190', '110,70,200'];
+    for (let i = 0; i < 9; i++)
+      softBlob(g, rand(0, W), rand(0, H), rand(130, 230), tones[i % tones.length], rand(0.22, 0.32));
+  },
+];
+
+function buildBackground(lvl) {
+  const off = document.createElement('canvas');
+  off.width = W;
+  off.height = H;
+  const g = off.getContext('2d');
+
+  const base = g.createLinearGradient(0, 0, 0, H);
+  base.addColorStop(0, '#05050f');
+  base.addColorStop(1, '#0b0716');
+  g.fillStyle = base;
+  g.fillRect(0, 0, W, H);
+
+  g.globalCompositeOperation = 'lighter';
+  BACKDROPS[(lvl - 1) % BACKDROPS.length](g);
+  g.globalCompositeOperation = 'source-over';
+
+  // Estrellas lejanas, tenues
+  for (let i = 0; i < 200; i++) {
+    g.fillStyle = `rgba(255,255,255,${rand(0.15, 0.5).toFixed(2)})`;
+    g.fillRect(rand(0, W), rand(0, H), 1, 1);
+  }
+
+  // Atenuar para que quede claramente al fondo
+  g.fillStyle = 'rgba(0,0,10,0.3)';
+  g.fillRect(0, 0, W, H);
+  return off;
+}
+
 // ── Estado del juego ──────────────────────────────────────────────────────────
+let bgCanvas;
 let ship, bullets, asteroids, particles, powerups;
 let score, lives, level;
 let state;      // 'playing' | 'dead' | 'gameover'
@@ -340,6 +529,7 @@ function initGame() {
   tripleUsed  = false;
   powerupUsed = false;
   state  = 'playing';
+  bgCanvas = buildBackground(level);
   spawnAsteroids(4);
 }
 
@@ -351,6 +541,7 @@ function nextLevel() {
   particles = [];
   powerups  = [];
   ship.reset();
+  bgCanvas = buildBackground(level);
   spawnAsteroids(3 + level);
 }
 
@@ -483,16 +674,8 @@ function drawLifeIcon(x, y) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth   = 1.2;
-  ctx.lineJoin    = 'round';
-  ctx.beginPath();
-  ctx.moveTo( 9,  0);
-  ctx.lineTo(-6, -5);
-  ctx.lineTo(-3,  0);
-  ctx.lineTo(-6,  5);
-  ctx.closePath();
-  ctx.stroke();
+  ctx.scale(0.55, 0.55);
+  drawShipHull();
   ctx.restore();
 }
 
@@ -535,8 +718,7 @@ function drawOverlay(title, sub) {
 }
 
 function draw() {
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(bgCanvas, 0, 0);
 
   particles.forEach(p => p.draw());
   asteroids.forEach(a => a.draw());
