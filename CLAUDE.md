@@ -15,16 +15,13 @@ Open `index.html` directly in a browser, or serve the folder with `npx serve .` 
 All game logic lives in `game.js` (loaded by `index.html` onto an 800x600 `<canvas id="canvas">`). It is a single global-scope script, organized in labeled sections:
 
 - **Input**: `keys` tracks held keys; `justPressed` + `pressed(code)` gives one-shot edge detection (consumed on read). Used for shooting (`Space`, one bullet per press, 0.2s cooldown) and restart.
-- **Entities** (`Bullet`, `Asteroid`, `Ship`, `Particle`): each has `update(dt)` / `draw()` and a `dead` flag; dead entities are filtered out of their arrays each frame. Entities draw directly with the shared global `ctx`.
-- **Game state**: module-level `let` globals (`ship`, `bullets`, `asteroids`, `particles`, `score`, `lives`, `level`) plus `state` = `'playing' | 'dead' | 'gameover'`. `update(dt)` branches on `state`; `'dead'` is a 2s respawn timer during which asteroids/particles keep moving.
+- **Entities** (`Bullet`, `Asteroid`, `Ship`, `Particle`, `PowerUp`): each has `update(dt)` / `draw()` and a `dead` flag; dead entities are filtered out of their arrays each frame. Entities draw directly with the shared global `ctx`.
+- **Game state**: module-level `let` globals (`ship`, `bullets`, `asteroids`, `particles`, `powerups`, `score`, `lives`, `level`) plus `state` = `'playing' | 'dead' | 'gameover'`. `update(dt)` branches on `state`; `'dead'` is a 2s respawn timer during which asteroids/particles keep moving.
 - **Loop**: `requestAnimationFrame` loop with `dt` in seconds, clamped to 0.05s. Movement is time-based (px/s).
 
 Key conventions:
 - The play field is toroidal: positions use `wrap(v, W|H)`. Particles are the exception and do not wrap.
 - Asteroid size is 1..6 (`MAX_SIZE`); `RADII`, `SPEEDS`, `POINTS` are arrays indexed by size (index 0 unused). Smaller asteroids give more points. All sizes draw the same sprite (`asteroide.png`, inverted and circle-clipped); level spawns pick sizes 4-6. `split()` produces two asteroids of `size - 1`.
 - Collision is circle-based via `dist()` on `radius`; ship-vs-asteroid uses `ship.radius + a.radius * 0.82`. Ship is skipped while `ship.invincible > 0` (3s after spawn, drawn blinking).
+- Power-ups: triple shot is granted directly on a bullet hit (`tripleUsed`, once per level). The other four (`shield`, `slow`, `nova`, `hyper`) spawn as a `PowerUp` pickup symbol on a bullet hit (`POWERUP_CHANCE`, max one per level via `powerupUsed`, random type from `POWERUP_TYPES`). `applyPowerUp(type)` applies it; effects are timers on `Ship` (`shield`, `slow`, `hyper`) that reset with `ship.reset()`. `slow` scales only the asteroid `dt` in `update()`; a shield absorbs one asteroid hit (asteroid destroyed without splitting); `nova` clears all asteroids (no split) and so triggers `nextLevel()`.
 - Level clear (no asteroids) calls `nextLevel()`, which spawns `3 + level` asteroids outside a safe radius around the center.
-
-## Notes
-
-- README.md still mentions power-ups and a "shooting star" asteroid; those were removed from the code (commit 13e713f) and no longer exist.
