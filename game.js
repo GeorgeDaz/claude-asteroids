@@ -114,6 +114,10 @@ class Asteroid {
 }
 
 // ── Ship ──────────────────────────────────────────────────────────────────────
+const TRIPLE_DURATION = 10;    // segundos de disparo triple
+const TRIPLE_CHANCE   = 0.1;   // probabilidad por impacto a un asteroide
+const TRIPLE_SPREAD   = 0.2;   // separación angular entre balas (rad)
+
 class Ship {
   constructor() { this.reset(); }
 
@@ -127,6 +131,7 @@ class Ship {
     this.thrusting     = false;
     this.invincible    = 3;
     this.shootCooldown = 0;
+    this.tripleShot    = 0;
     this.dead          = false;
   }
 
@@ -134,6 +139,7 @@ class Ship {
     if (this.dead) return;
     if (this.invincible    > 0) this.invincible    -= dt;
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
+    if (this.tripleShot    > 0) this.tripleShot    -= dt;
 
     const ROT   = 3.5;   // rad/s
     const THRUST = 260;  // px/s²
@@ -160,7 +166,10 @@ class Ship {
     const NOSE = 21;
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
-    return [new Bullet(ox, oy, this.angle)];
+    const angles = this.tripleShot > 0
+      ? [this.angle - TRIPLE_SPREAD, this.angle, this.angle + TRIPLE_SPREAD]
+      : [this.angle];
+    return angles.map(a => new Bullet(ox, oy, a));
   }
 
   draw() {
@@ -235,6 +244,7 @@ let ship, bullets, asteroids, particles;
 let score, lives, level;
 let state;      // 'playing' | 'dead' | 'gameover'
 let deadTimer;
+let tripleUsed; // el disparo triple solo aparece una vez por nivel
 
 function spawnAsteroids(count) {
   const SAFE_DIST = 130;
@@ -256,12 +266,14 @@ function initGame() {
   score  = 0;
   lives  = 3;
   level  = 1;
+  tripleUsed = false;
   state  = 'playing';
   spawnAsteroids(4);
 }
 
 function nextLevel() {
   level++;
+  tripleUsed = false;
   bullets   = [];
   particles = [];
   ship.reset();
@@ -325,6 +337,10 @@ function update(dt) {
         score += POINTS[a.size];
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
+        if (!tripleUsed && Math.random() < TRIPLE_CHANCE) {
+          tripleUsed = true;
+          ship.tripleShot = TRIPLE_DURATION;
+        }
       }
     }
   }
@@ -372,6 +388,9 @@ function drawHUD() {
 
   ctx.textAlign = 'center';
   ctx.fillText(`NIVEL ${level}`, W / 2, 26);
+
+  if (ship.tripleShot > 0)
+    ctx.fillText(`TRIPLE ${Math.ceil(ship.tripleShot)}s`, W / 2, 46);
 
   for (let i = 0; i < lives; i++)
     drawLifeIcon(W - 16 - i * 22, 18);
